@@ -1,52 +1,62 @@
 package main
 
 import (
-    "fmt"
-    "log"
-    "github.com/PuerkitoBio/goquery"
-    "net/http"
-    "encoding/json"
-    "os"
+	"errors"
+	"log"
+	"net/http"
+	"strings"
+
+	"golang.org/x/net/html"
 )
 
-func main() {
-    // Scrape the quotes from a website
-    res, err := http.Get("https://quotes.toscrape.com/") // Example URL
-    if err != nil {
-        log.Fatal("Error fetching page: ", err)
-    }
-    defer res.Body.Close()
+// ScrapeQuotes scrapes quotes from a given URL.
+func ScrapeQuotes(url string) ([]string, error) {
+	log.Println("Fetching URL:", url)
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Printf("Error fetching the page: %v", err)
+		return nil, errors.New("failed to fetch the page")
+	}
+	defer resp.Body.Close()
 
-    if res.StatusCode != 200 {
-        log.Fatal("Error: Status Code ", res.StatusCode)
-    }
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Unexpected status code: %d", resp.StatusCode)
+		return nil, errors.New("failed to fetch the page")
+	}
 
-    // Parse the HTML page using goquery
-    doc, err := goquery.NewDocumentFromReader(res.Body)
-    if err != nil {
-        log.Fatal("Error parsing HTML: ", err)
-    }
+	doc, err := html.Parse(resp.Body)
+	if err != nil {
+		log.Printf("Error parsing the page: %v", err)
+		return nil, errors.New("failed to parse the page")
+	}
 
-    // Slice to store quotes
-    var quotes []string
+	var quotes []string
+	var f func(*html.Node)
+	f = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "span" {
+			for _, attr := range n.Attr {
+				if attr.Key == "class" && attr.Val == "text" {
+					if n.FirstChild != nil {
+						quote := strings.TrimSpace(n.FirstChild.Data)
+						if quote != "" {
+							quotes = append(quotes, quote)
+						}
+					}
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			f(c)
+		}
+	}
+	f(doc)
 
-    // Find and scrape quotes from the page
-    doc.Find(".quote .text").Each(func(index int, item *goquery.Selection) {
-        quote := item.Text()
-        quotes = append(quotes, quote)
-    })
+	if len(quotes) == 0 {
+		log.Println("No quotes found on the page")
+		return nil, errors.New("no quotes found on the page")
+	}
 
-    // Save the quotes to quotes.json
-    jsonData, err := json.MarshalIndent(quotes, "", "    ")
-    if err != nil {
-        log.Fatalf("Error marshaling data: %v", err)
-    }
-
-    err = os.WriteFile("quotes.json", jsonData, 0644)
-    if err != nil {
-        log.Fatalf("Error writing file: %v", err)
-    }
-
-    fmt.Println("Quotes have been successfully scraped and saved to quotes.json")
+	log.Printf("Scraped %d quotes", len(quotes))
+	return quotes, nil
 }
 

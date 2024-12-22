@@ -1,77 +1,35 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
+	"log"
 	"net/http"
-	"sync"
-
-	"github.com/PuerkitoBio/goquery"
 )
 
-var (
-	quotes []string
-	mu     sync.Mutex
-)
-
-// Scrape quotes from the website
-func scrapeQuotes() error {
-	const baseURL = "https://quotes.toscrape.com/page/%d/"
-	mu.Lock()
-	defer mu.Unlock()
-
-	quotes = nil // Clear existing quotes
-	for page := 1; page <= 10; page++ {
-		resp, err := http.Get(fmt.Sprintf(baseURL, page))
-		if err != nil {
-			return fmt.Errorf("failed to fetch page %d: %v", page, err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("error fetching page %d: %s", page, resp.Status)
-		}
-
-		doc, err := goquery.NewDocumentFromReader(resp.Body)
-		if err != nil {
-			return fmt.Errorf("failed to parse page %d: %v", page, err)
-		}
-
-		doc.Find(".quote .text").Each(func(i int, s *goquery.Selection) {
-			quotes = append(quotes, s.Text())
-			// Stop collecting once we reach 100 quotes
-			if len(quotes) >= 100 {
-				return
-			}
-		})
-
-		if len(quotes) >= 100 {
-			break
-		}
-	}
-
-	return nil
-}
-
-func getQuotes(w http.ResponseWriter, r *http.Request) {
-	mu.Lock()
-	defer mu.Unlock()
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(quotes)
-}
+var quotes []string // Declare the global quotes variable
 
 func main() {
-	// Initial scrape
-	if err := scrapeQuotes(); err != nil {
-		fmt.Println("Failed to scrape quotes:", err)
-		return
+	// Step 1: Scrape Quotes from the website
+	const url = "https://quotes.toscrape.com"
+	log.Println("Starting to scrape quotes...")
+	var err error
+	quotes, err = ScrapeQuotes(url)
+	if err != nil {
+		log.Fatalf("Failed to scrape quotes: %v", err)
 	}
+	log.Printf("Successfully scraped %d quotes\n", len(quotes))
 
-	http.HandleFunc("/quotes", getQuotes)
+	// Step 2: Save Quotes to a File
+	log.Println("Saving quotes to file...")
+	err = SaveQuotesToFile("quotes.json", quotes)
+	if err != nil {
+		log.Fatalf("Failed to save quotes to file: %v", err)
+	}
+	log.Println("Quotes saved to quotes.json")
 
-	fmt.Println("Server is running on http://localhost:8080")
-	http.ListenAndServe(":8080", nil)
+	// Step 3: Start the HTTP Server
+	http.HandleFunc("/quotes", QuotesHandler)
+	http.HandleFunc("/random-quote", RandomQuoteHandler) // Add random quote endpoint
+	log.Println("Server is running on http://localhost:8080")
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
