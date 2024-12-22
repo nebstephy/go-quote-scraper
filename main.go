@@ -3,33 +3,23 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 )
 
-var quotes []string // Declare the global quotes variable
-
 func main() {
-	// Step 1: Scrape Quotes from the website
-	const url = "https://quotes.toscrape.com"
-	log.Println("Starting to scrape quotes...")
-	var err error
-	quotes, err = ScrapeQuotes(url)
-	if err != nil {
-		log.Fatalf("Failed to scrape quotes: %v", err)
+	// Use the PORT environment variable, default to 8080 for local testing
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+		log.Println("Defaulting to port 8080")
 	}
-	log.Printf("Successfully scraped %d quotes\n", len(quotes))
 
-	// Step 2: Save Quotes to a File
-	log.Println("Saving quotes to file...")
-	err = SaveQuotesToFile("quotes.json", quotes)
-	if err != nil {
-		log.Fatalf("Failed to save quotes to file: %v", err)
-	}
-	log.Println("Quotes saved to quotes.json")
-
-	// Step 3: Start the HTTP Server
+	// Set up routes
 	http.HandleFunc("/quotes", QuotesHandler)
-	http.HandleFunc("/random-quote", RandomQuoteHandler) // Add random quote endpoint
-	log.Println("Server is running on http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	http.HandleFunc("/random-quote", RandomQuoteHandler)
+
+	// Start the server
+	log.Printf("Server is running on port %s", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 
